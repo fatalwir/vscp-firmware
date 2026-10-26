@@ -163,10 +163,10 @@ typedef enum probe_substate_t {
 #define VSCP_LEVEL2_DM_FLAG_CHECK_SUBZONE 0x00000008 // subzone in third data byte
 
 #define LEVEL2_DM_FLAGS(row)                                                                                           \
-  construct_unsigned32(pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL1_DM_POS_FLAGS],                                  \
-                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL1_DM_POS_FLAGS + 1],                              \
-                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL1_DM_POS_FLAGS + 2],                              \
-                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL1_DM_POS_FLAGS + 3])
+  construct_unsigned32(pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_FLAGS],                                  \
+                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_FLAGS + 1],                              \
+                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_FLAGS + 2],                              \
+                       pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_FLAGS + 3])
 #define LEVEL2_DM_OADDR(row, pos) (pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_OADDR + pos])
 #define LEVEL2_DM_CLASS(row)                                                                                           \
   construct_unsigned16(pctx->pDm[(pctx->sizeDmRow * row) + VSCP_LEVEL2_DM_POS_CLASS],                                  \
