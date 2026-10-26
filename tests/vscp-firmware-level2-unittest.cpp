@@ -562,3 +562,71 @@ TEST(_vscp_frmw2, handle_protocol_event_read_register_sends_rw_response)
   ASSERT_EQ(kReg, g_stub.last_sent.pdata[0]); // register echoed
   ASSERT_EQ(FRMW2_MAJOR_VERSION, g_stub.last_sent.pdata[1]); // register value
 }
+
+// ---------------------------------------------------------------------------
+// Level II register write tests
+// ---------------------------------------------------------------------------
+
+static void write_level2_registers(vscp_frmw2_firmware_config_t& cfg, uint32_t reg, const uint8_t* values, uint16_t cnt)
+{
+  uint8_t buf[16 + 4 + 8];
+  std::memcpy(buf, cfg.guid, 16);
+  buf[16] = (reg >> 24) & 0xff;
+  buf[17] = (reg >> 16) & 0xff;
+  buf[18] = (reg >> 8) & 0xff;
+  buf[19] = reg & 0xff;
+  std::memcpy(buf + 20, values, cnt);
+
+  vscp_event_t ev;
+  std::memset(&ev, 0, sizeof(ev));
+  ev.vscp_class = VSCP_CLASS2_PROTOCOL;
+  ev.vscp_type  = VSCP2_TYPE_PROTOCOL_WRITE_REGISTER;
+  ev.sizeData   = 20 + cnt;
+  ev.pdata      = buf;
+  vscp_frmw2_handle_protocol_event(&cfg, &ev);
+}
+
+TEST(_vscp_frmw2, level2_write_register_one_byte_is_answered)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+
+  const uint8_t val = 0x42;
+  write_level2_registers(cfg, 0x00000010, &val, 1);
+  ASSERT_EQ(1, g_stub.write_reg_calls);
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
+  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_READ_WRITE_RESPONSE, g_stub.last_sent.vscp_type);
+  ASSERT_EQ(5u, g_stub.last_sent.sizeData); // start register + one value
+}
+
+TEST(_vscp_frmw2, level2_write_standard_register_does_not_reach_user_callback)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+  cfg.alarm_status = 0x05;
+
+  const uint8_t val = 0x00;
+  write_level2_registers(cfg, 0xffffff80, &val, 1); // alarm status
+  ASSERT_EQ(0, g_stub.write_reg_calls);
+  ASSERT_EQ(0, cfg.alarm_status);
+  ASSERT_EQ(1, g_stub.send_calls);
+}
+
+TEST(_vscp_frmw2, level2_node_reset_sequence_restores_defaults)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+
+  const uint8_t arm     = 0x55;
+  const uint8_t confirm = 0xaa;
+  write_level2_registers(cfg, 0xffffffa2, &arm, 1);
+  ASSERT_EQ(1, g_stub.send_calls); // the first half is answered too
+  g_stub.now_ms += 500;
+  write_level2_registers(cfg, 0xffffffa2, &confirm, 1);
+  ASSERT_EQ(1, g_stub.restore_defaults_calls);
+  ASSERT_EQ(2, g_stub.send_calls);
+}

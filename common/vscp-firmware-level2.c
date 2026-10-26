@@ -1406,7 +1406,7 @@ vscp_frmw2_handle_protocol_event(vscp_frmw2_firmware_context_t *pctx, const vscp
       case VSCP2_TYPE_PROTOCOL_WRITE_REGISTER: {
 
         // Must be at least GUID + start reg + one data byte
-        if (pev->sizeData < 23) {
+        if (pev->sizeData < 21) {
           return VSCP_ERROR_PARAMETER;
         }
 
@@ -1560,12 +1560,9 @@ vscp_frmw2_vscp2_register_write(vscp_frmw2_firmware_context_t *pctx,
     return VSCP_ERROR_INVALID_POINTER;
   }
 
-  int rv;
-
+  // The response carries the read back value, so a rejected write is reported there
   for (uint32_t pos = startreg; pos < (startreg + cnt); pos++) {
-    if (VSCP_ERROR_SUCCESS != (rv = pctx->ops->write_reg(pctx, 0, pos, pdata[pos - startreg]))) {
-      return rv;
-    }
+    vscp_frmw2_write_reg(pctx, pos, pdata[pos - startreg]);
   }
 
   return vscp_frmw2_vscp2_register_read(pctx, startreg, cnt);
