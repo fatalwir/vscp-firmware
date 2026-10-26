@@ -2860,8 +2860,8 @@ vscp_fwhlp_writeEventToFrame(uint8_t *frame, size_t len, uint8_t encryption, con
     return VSCP_ERROR_BUFFER_TO_SMALL;
   }
 
-  // Set packet type and encryption
-  frame[VSCP_BINARY_PACKET_FRAME0_POS_PKTTYPE] = SET_VSCP_BINARY_TYPE(VSCP_BINARY_PACKET_TYPE_EVENT, encryption);
+  // Set packet type and encryption, frame format 1 is written
+  frame[VSCP_BINARY_PACKET_FRAME0_POS_PKTTYPE] = SET_VSCP_BINARY_TYPE(VSCP_MULTICAST_TYPE_EVENT1, encryption);
 
   // If event does not use frame version 0 (date/time fields) we convert it to
   // frame version 1 (nanosecond timestamp) and set the frame version bits accordingly.
@@ -2988,15 +2988,26 @@ vscp_fwhlp_getEventFromFrame(vscp_event_t *pEvent, const uint8_t *buf, size_t le
     return VSCP_ERROR_PARAMETER;
   }
 
-  // Minimum length check (at least need frame type byte)
-  if (len < 1) {
+  // Minimum length check (type byte, header and CRC)
+  if (len < (1 + VSCP_BINARY_PACKET_FRAME0_HEADER_LENGTH + 2)) {
     return VSCP_ERROR_BUFFER_TO_SMALL;
   }
 
   // Determine frame format from the frame type byte
   uint8_t pktType = GET_VSCP_BINARY_PACKET_TYPE(buf[0]);
 
-  if (pktType == VSCP_BINARY_PACKET_TYPE_EVENT) {
+  // Only frame format 0 and 1 carry events
+  if ((VSCP_MULTICAST_TYPE_EVENT0 != pktType) && (VSCP_MULTICAST_TYPE_EVENT1 != pktType)) {
+    return VSCP_ERROR_UNSUPPORTED;
+  }
+
+  // Format 1 frames, and format 0 frames whose head announces the nanosecond
+  // timestamp (written by earlier versions of this library), use the format 1 layout
+  uint16_t frameVersion = ((((uint16_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_HEAD_MSB] << 8) +
+                            buf[VSCP_BINARY_PACKET_FRAME0_POS_HEAD_LSB]) &
+                           VSCP_HEADER16_FRAME_VERSION_MASK);
+
+  if ((VSCP_MULTICAST_TYPE_EVENT1 == pktType) || (VSCP_HEADER16_FRAME_VERSION_UNIX_NS == frameVersion)) {
     //
     // Frame format 1: 8-byte nanosecond timestamp
     //
@@ -3057,42 +3068,23 @@ vscp_fwhlp_getEventFromFrame(vscp_event_t *pEvent, const uint8_t *buf, size_t le
       pEvent->pdata = NULL;
     }
 
-    // Head - We always force frame version to UNIX_NS, convert if needed
+    // Head - We always force frame version to UNIX_NS
 
     pEvent->head =
       ((uint16_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_HEAD_MSB] << 8) + buf[VSCP_BINARY_PACKET_FRAME0_POS_HEAD_LSB];
+    pEvent->head = (pEvent->head & ~VSCP_HEADER16_FRAME_VERSION_MASK) | VSCP_HEADER16_FRAME_VERSION_UNIX_NS;
 
-    if ((pEvent->head & VSCP_HEADER16_FRAME_VERSION_MASK) == VSCP_HEADER16_FRAME_VERSION_ORIGINAL) {
-      // Convert to frame version 1 (nanosecond timestamp)
-      pEvent->timestamp_ns = vscp_fwhlp_to_unix_ns(
-        ((uint16_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_YEAR_MSB] << 8) + buf[VSCP_BINARY_PACKET_FRAME0_POS_YEAR_LSB],
-        buf[VSCP_BINARY_PACKET_FRAME0_POS_MONTH],
-        buf[VSCP_BINARY_PACKET_FRAME0_POS_DAY],
-        buf[VSCP_BINARY_PACKET_FRAME0_POS_HOUR],
-        buf[VSCP_BINARY_PACKET_FRAME0_POS_MINUTE],
-        buf[VSCP_BINARY_PACKET_FRAME0_POS_SECOND],
-        ((uint32_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_TIMESTAMP] << 24) +
-          ((uint32_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_TIMESTAMP + 1] << 16) +
-          ((uint32_t) buf[VSCP_BINARY_PACKET_FRAME0_POS_TIMESTAMP + 2] << 8) +
-          buf[VSCP_BINARY_PACKET_FRAME0_POS_TIMESTAMP + 3]);
-      // Marks assume frame version 1 (nanosecond timestamp)
-      pEvent->head  = (pEvent->head & ~VSCP_HEADER16_FRAME_VERSION_MASK) | VSCP_HEADER16_FRAME_VERSION_UNIX_NS;
-      pEvent->year  = 0xffff;
-      pEvent->month = 0xff;
-    }
-    else {
-      // Set nanosecond timestamp
-      pEvent->timestamp_ns = ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP] << 56) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 1] << 48) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 2] << 40) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 3] << 32) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 4] << 24) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 5] << 16) +
-                             ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 6] << 8) +
-                             buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 7];
-      pEvent->year  = 0xffff;
-      pEvent->month = 0xff;
-    }
+    // Set nanosecond timestamp
+    pEvent->timestamp_ns = ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP] << 56) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 1] << 48) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 2] << 40) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 3] << 32) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 4] << 24) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 5] << 16) +
+                           ((uint64_t) buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 6] << 8) +
+                           buf[VSCP_BINARY_PACKET_FRAME1_POS_TIMESTAMP + 7];
+    pEvent->year  = 0xffff;
+    pEvent->month = 0xff;
 
     // Copy in GUID
     memcpy(pEvent->GUID, buf + VSCP_BINARY_PACKET_FRAME0_POS_GUID, 16);
