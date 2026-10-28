@@ -671,6 +671,9 @@ TEST(_vscp_frmw2, feed_level2_dm_index_is_data_byte_0)
   uint8_t mismatch[3] = { 0x09, 0x02, 0x02 }; // index differs, zone byte equals cfg.index
   ASSERT_EQ(1, feed_dm2(cfg, VSCP_CLASS1_CONTROL, VSCP_TYPE_CONTROL_TURNON, match));
   ASSERT_EQ(0, feed_dm2(cfg, VSCP_CLASS1_CONTROL, VSCP_TYPE_CONTROL_TURNON, mismatch));
+}
+
+// ---------------------------------------------------------------------------
 // Level II register write tests
 // ---------------------------------------------------------------------------
 
@@ -694,6 +697,77 @@ static void write_level2_registers(vscp_frmw2_firmware_config_t& cfg, uint32_t r
 }
 
 TEST(_vscp_frmw2, level2_write_register_one_byte_is_answered)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+
+  const uint8_t val = 0x42;
+  write_level2_registers(cfg, 0x00000010, &val, 1);
+  ASSERT_EQ(1, g_stub.write_reg_calls);
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
+  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_READ_WRITE_RESPONSE, g_stub.last_sent.vscp_type);
+  ASSERT_EQ(5u, g_stub.last_sent.sizeData); // start register + one value
+}
+
+TEST(_vscp_frmw2, level2_write_standard_register_does_not_reach_user_callback)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+  cfg.alarm_status = 0x05;
+
+  const uint8_t val = 0x00;
+  write_level2_registers(cfg, 0xffffff80, &val, 1); // alarm status
+  ASSERT_EQ(0, g_stub.write_reg_calls);
+  ASSERT_EQ(0, cfg.alarm_status);
+  ASSERT_EQ(1, g_stub.send_calls);
+}
+
+TEST(_vscp_frmw2, level2_node_reset_sequence_restores_defaults)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+
+  const uint8_t arm     = 0x55;
+  const uint8_t confirm = 0xaa;
+  write_level2_registers(cfg, 0xffffffa2, &arm, 1);
+  ASSERT_EQ(1, g_stub.send_calls); // the first half is answered too
+  g_stub.now_ms += 500;
+  write_level2_registers(cfg, 0xffffffa2, &confirm, 1);
+  ASSERT_EQ(1, g_stub.restore_defaults_calls);
+  ASSERT_EQ(2, g_stub.send_calls);
+}
+
+// ---------------------------------------------------------------------------
+// Level II decision-matrix info
+// ---------------------------------------------------------------------------
+
+TEST(_vscp_frmw2, level2_dm_info_reply_is_class2_protocol)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  uint8_t dm[4 * 32] = { 0 };
+  cfg.pDm         = dm;
+  cfg.nDmRows     = 4;
+  cfg.sizeDmRow   = 32;
+  cfg.regOffsetDm = 0x00000100;
+  reset_stub();
+
+  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_report_dmatrix(&cfg));
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
+  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_GET_MATRIX_INFO_RESPONSE, g_stub.last_sent.vscp_type);
+  ASSERT_EQ(22u, g_stub.last_sent.sizeData);
+  ASSERT_EQ(0, std::memcmp(cfg.guid, g_stub.last_sent.pdata, 16));
+  ASSERT_EQ(32, g_stub.last_sent.pdata[16]); // row size
+  ASSERT_EQ(4, g_stub.last_sent.pdata[17]);  // rows
+  ASSERT_EQ(0x01, g_stub.last_sent.pdata[20]);
+}
+
+// ---------------------------------------------------------------------------
 // Level II standard registers (0xffffff80 - 0xffffffff)
 // ---------------------------------------------------------------------------
 
@@ -737,67 +811,6 @@ TEST(_vscp_frmw2, level2_user_id_write)
   vscp_frmw2_firmware_config_t cfg;
   init_config(cfg);
   reset_stub();
-
-  const uint8_t val = 0x42;
-  write_level2_registers(cfg, 0x00000010, &val, 1);
-  ASSERT_EQ(1, g_stub.write_reg_calls);
-  ASSERT_EQ(1, g_stub.send_calls);
-  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
-  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_READ_WRITE_RESPONSE, g_stub.last_sent.vscp_type);
-  ASSERT_EQ(5u, g_stub.last_sent.sizeData); // start register + one value
-}
-
-TEST(_vscp_frmw2, level2_write_standard_register_does_not_reach_user_callback)
-{
-  vscp_frmw2_firmware_config_t cfg;
-  init_config(cfg);
-  reset_stub();
-  cfg.alarm_status = 0x05;
-
-  const uint8_t val = 0x00;
-  write_level2_registers(cfg, 0xffffff80, &val, 1); // alarm status
-  ASSERT_EQ(0, g_stub.write_reg_calls);
-  ASSERT_EQ(0, cfg.alarm_status);
-  ASSERT_EQ(1, g_stub.send_calls);
-}
-
-TEST(_vscp_frmw2, level2_node_reset_sequence_restores_defaults)
-{
-  vscp_frmw2_firmware_config_t cfg;
-  init_config(cfg);
-  reset_stub();
-
-  const uint8_t arm     = 0x55;
-  const uint8_t confirm = 0xaa;
-  write_level2_registers(cfg, 0xffffffa2, &arm, 1);
-  ASSERT_EQ(1, g_stub.send_calls); // the first half is answered too
-  g_stub.now_ms += 500;
-  write_level2_registers(cfg, 0xffffffa2, &confirm, 1);
-  ASSERT_EQ(1, g_stub.restore_defaults_calls);
-  ASSERT_EQ(2, g_stub.send_calls);
-// Level II decision-matrix info
-// ---------------------------------------------------------------------------
-
-TEST(_vscp_frmw2, level2_dm_info_reply_is_class2_protocol)
-{
-  vscp_frmw2_firmware_config_t cfg;
-  init_config(cfg);
-  uint8_t dm[4 * 32] = { 0 };
-  cfg.pDm         = dm;
-  cfg.nDmRows     = 4;
-  cfg.sizeDmRow   = 32;
-  cfg.regOffsetDm = 0x00000100;
-  reset_stub();
-
-  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_report_dmatrix(&cfg));
-  ASSERT_EQ(1, g_stub.send_calls);
-  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
-  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_GET_MATRIX_INFO_RESPONSE, g_stub.last_sent.vscp_type);
-  ASSERT_EQ(22u, g_stub.last_sent.sizeData);
-  ASSERT_EQ(0, std::memcmp(cfg.guid, g_stub.last_sent.pdata, 16));
-  ASSERT_EQ(32, g_stub.last_sent.pdata[16]); // row size
-  ASSERT_EQ(4, g_stub.last_sent.pdata[17]);  // rows
-  ASSERT_EQ(0x01, g_stub.last_sent.pdata[20]);
   uint8_t guid[16];
   std::memcpy(guid, cfg.guid, sizeof(guid));
 
@@ -808,4 +821,23 @@ TEST(_vscp_frmw2, level2_dm_info_reply_is_class2_protocol)
     ASSERT_EQ(0x90 + i, cfg.userId[i]);
   }
   ASSERT_EQ(0, std::memcmp(guid, cfg.guid, sizeof(guid)));
+}
+
+// ---------------------------------------------------------------------------
+// Level II register ranges that end at the last register (0xffffffff)
+// ---------------------------------------------------------------------------
+
+TEST(_vscp_frmw2, level2_register_read_up_to_last_register)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+  cfg.alarm_status = 0x05;
+
+  // 0xffffff80 + 128 wraps to zero, the whole standard page must still be read
+  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_vscp2_register_read(&cfg, 0xffffff80, 128));
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(4u + 128u, g_stub.last_sent.sizeData);
+  ASSERT_EQ(0x05, g_stub.last_sent.pdata[4]); // alarm status was read
+  ASSERT_EQ(0, cfg.alarm_status);             // and cleared by the read
 }

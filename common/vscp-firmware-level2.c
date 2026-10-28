@@ -1522,9 +1522,9 @@ vscp_frmw2_vscp2_register_read(vscp_frmw2_firmware_context_t *pctx, uint32_t sta
     return rv;
   }
 
-  // Read the registers
-  for (uint32_t pos = startreg; pos < (startreg + count); pos++) {
-    if (VSCP_ERROR_SUCCESS != (rv = vscp_frmw2_read_reg(pctx, pos, &pev->pdata[pos - startreg + 4]))) {
+  // Read the registers (count, not an end address, so a range ending at 0xffffffff works)
+  for (uint32_t i = 0; i < count; i++) {
+    if (VSCP_ERROR_SUCCESS != (rv = vscp_frmw2_read_reg(pctx, startreg + i, &pev->pdata[i + 4]))) {
       vscp_fwhlp_deleteEvent(&pev);
       return rv;
     }
@@ -1561,8 +1561,8 @@ vscp_frmw2_vscp2_register_write(vscp_frmw2_firmware_context_t *pctx,
   }
 
   // The response carries the read back value, so a rejected write is reported there
-  for (uint32_t pos = startreg; pos < (startreg + cnt); pos++) {
-    vscp_frmw2_write_reg(pctx, pos, pdata[pos - startreg]);
+  for (uint32_t i = 0; i < cnt; i++) {
+    vscp_frmw2_write_reg(pctx, startreg + i, pdata[i]);
   }
 
   return vscp_frmw2_vscp2_register_read(pctx, startreg, cnt);
