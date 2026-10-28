@@ -618,3 +618,22 @@ TEST(_vscp_frmw2, level2_user_id_write)
   }
   ASSERT_EQ(0, std::memcmp(guid, cfg.guid, sizeof(guid)));
 }
+
+// ---------------------------------------------------------------------------
+// Level II register ranges that end at the last register (0xffffffff)
+// ---------------------------------------------------------------------------
+
+TEST(_vscp_frmw2, level2_register_read_up_to_last_register)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+  cfg.alarm_status = 0x05;
+
+  // 0xffffff80 + 128 wraps to zero, the whole standard page must still be read
+  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_vscp2_register_read(&cfg, 0xffffff80, 128));
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(4u + 128u, g_stub.last_sent.sizeData);
+  ASSERT_EQ(0x05, g_stub.last_sent.pdata[4]); // alarm status was read
+  ASSERT_EQ(0, cfg.alarm_status);             // and cleared by the read
+}
