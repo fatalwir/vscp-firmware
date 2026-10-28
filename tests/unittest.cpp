@@ -1794,7 +1794,7 @@ TEST(_vscp_firmware_helper, vscp_fwhlp_writeEventToFrame_basic)
   ASSERT_EQ(VSCP_ERROR_SUCCESS, rv);
 
   // Verify frame type is packet format 1 (0x10 = type 1 in upper nibble)
-  ASSERT_EQ(0x00, frame[0]);
+  ASSERT_EQ(0x10, frame[0]);
 
   // Verify head (frame version bits should be set to UNIX_NS)
   ASSERT_EQ(0x01, frame[1]); // MSB - frame version bits
@@ -4638,6 +4638,44 @@ TEST(_vscp_firmware_helper, vscp_fwhlp_writeReplyToFrame_large_values)
   // Error
   ASSERT_EQ(0xFF, frame[3]);
   ASSERT_EQ(0xFF, frame[4]);
+}
+
+// Spec heartbeat frame (vscp_over_binary): type 0x10, frame format 1, zero timestamp
+static const uint8_t spec_heartbeat_frame[38] = { 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                                  0x00, 0x00, 0x00, 0x00, 0x04, 0x02, 0x00, 0x02, 0xff, 0xff,
+                                                  0xff, 0xff, 0xff, 0xff, 0xff, 0xf7, 0xb0, 0xe8, 0xe8, 0xff,
+                                                  0xfe, 0xe6, 0x32, 0x34, 0x00, 0x00, 0x38, 0xfe };
+
+TEST(_vscp_firmware_helper, vscp_fwhlp_getEventFromFrame_type_0x10_spec_heartbeat)
+{
+  vscp_event_t ev;
+  crcInit();
+
+  memset(&ev, 0, sizeof(vscpEvent));
+  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_fwhlp_getEventFromFrame(&ev, spec_heartbeat_frame, sizeof(spec_heartbeat_frame)));
+  ASSERT_EQ(1026, ev.vscp_class); // CLASS2.INFORMATION
+  ASSERT_EQ(2, ev.vscp_type);    // Level II heartbeat
+  ASSERT_EQ(0u, ev.timestamp_ns); // zero = receiver sets the time
+  ASSERT_EQ(0u, ev.sizeData);
+  ASSERT_EQ(0xf7, ev.GUID[7]);
+  if (ev.pdata) {
+    free(ev.pdata);
+  }
+}
+
+TEST(_vscp_firmware_helper, vscp_fwhlp_getEventFromFrame_rejects_command_and_reply_frames)
+{
+  vscp_event_t ev;
+  uint8_t frame[38];
+  crcInit();
+
+  memcpy(frame, spec_heartbeat_frame, sizeof(frame));
+  frame[0] = VSCP_BINARY_PACKET_TYPE_COMMAND;
+  memset(&ev, 0, sizeof(vscpEvent));
+  ASSERT_NE(VSCP_ERROR_SUCCESS, vscp_fwhlp_getEventFromFrame(&ev, frame, sizeof(frame)));
+
+  frame[0] = VSCP_BINARY_PACKET_TYPE_RESPONSE;
+  ASSERT_NE(VSCP_ERROR_SUCCESS, vscp_fwhlp_getEventFromFrame(&ev, frame, sizeof(frame)));
 }
 
 int
