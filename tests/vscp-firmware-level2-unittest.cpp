@@ -694,6 +694,45 @@ static void write_level2_registers(vscp_frmw2_firmware_config_t& cfg, uint32_t r
 }
 
 TEST(_vscp_frmw2, level2_write_register_one_byte_is_answered)
+// Level II standard registers (0xffffff80 - 0xffffffff)
+// ---------------------------------------------------------------------------
+
+static uint8_t read_level2_std(vscp_frmw2_firmware_config_t& cfg, uint32_t reg)
+{
+  uint8_t val = 0x5a;
+  EXPECT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_read_reg(&cfg, reg, &val));
+  return val;
+}
+
+TEST(_vscp_frmw2, level2_standard_register_reads)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  reset_stub();
+  const uint8_t userid[5] = { 0x11, 0x22, 0x33, 0x44, 0x55 };
+  std::memcpy(cfg.userId, userid, sizeof(userid));
+  cfg.manufacturerId         = 0xa1a2a3a4;
+  cfg.manufacturerSubId      = 0xb1b2b3b4;
+  cfg.standard_device_family = 0xc1c2c3c4;
+  cfg.standard_device_type   = 0xd1d2d3d4;
+  std::memcpy(cfg.mdfurl, "example.org/node.mdf", 20);
+
+  for (uint32_t i = 0; i < 5; i++) {
+    ASSERT_EQ(userid[i], read_level2_std(cfg, 0xffffff84 + i));
+  }
+  ASSERT_EQ(0xa1, read_level2_std(cfg, 0xffffff89)); // manufacturer id, MSB first
+  ASSERT_EQ(0xb4, read_level2_std(cfg, 0xffffff90)); // manufacturer sub id, LSB
+  ASSERT_EQ(0xc1, read_level2_std(cfg, 0xffffff9a)); // family, MSB first
+  ASSERT_EQ(0xd4, read_level2_std(cfg, 0xffffffa1)); // type, LSB
+  for (uint32_t i = 0; i < 16; i++) {
+    ASSERT_EQ(cfg.guid[i], read_level2_std(cfg, 0xffffffd0 + i));
+  }
+  for (uint32_t i = 0; i < 32; i++) {
+    ASSERT_EQ(cfg.mdfurl[i], read_level2_std(cfg, 0xffffffe0 + i));
+  }
+}
+
+TEST(_vscp_frmw2, level2_user_id_write)
 {
   vscp_frmw2_firmware_config_t cfg;
   init_config(cfg);
@@ -759,4 +798,14 @@ TEST(_vscp_frmw2, level2_dm_info_reply_is_class2_protocol)
   ASSERT_EQ(32, g_stub.last_sent.pdata[16]); // row size
   ASSERT_EQ(4, g_stub.last_sent.pdata[17]);  // rows
   ASSERT_EQ(0x01, g_stub.last_sent.pdata[20]);
+  uint8_t guid[16];
+  std::memcpy(guid, cfg.guid, sizeof(guid));
+
+  for (uint32_t i = 0; i < 5; i++) {
+    ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_write_reg(&cfg, 0xffffff84 + i, static_cast<uint8_t>(0x90 + i)));
+  }
+  for (uint32_t i = 0; i < 5; i++) {
+    ASSERT_EQ(0x90 + i, cfg.userId[i]);
+  }
+  ASSERT_EQ(0, std::memcmp(guid, cfg.guid, sizeof(guid)));
 }
