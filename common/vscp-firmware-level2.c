@@ -2451,8 +2451,13 @@ vscp_frmw2_feed_level2_dm(vscp_frmw2_firmware_context_t *pctx, const vscp_event_
       continue;
     }
 
+    // Class and type must match exactly
+    if ((LEVEL2_DM_CLASS(row) != pev->vscp_class) || (LEVEL2_DM_TYPE(row) != pev->vscp_type)) {
+      continue;
+    }
+
     // Should the originating id be checked and if so is it the same?
-    if ((LEVEL2_DM_FLAGS(row) & VSCP_LEVEL1_DM_FLAG_CHECK_OADDR) &&
+    if ((LEVEL2_DM_FLAGS(row) & VSCP_LEVEL2_DM_FLAG_CHECK_OADDR) &&
         ((pev->GUID[0] != LEVEL2_DM_OADDR(row, 0)) || (pev->GUID[1] != LEVEL2_DM_OADDR(row, 1)) ||
          (pev->GUID[2] != LEVEL2_DM_OADDR(row, 2)) || (pev->GUID[3] != LEVEL2_DM_OADDR(row, 3)) ||
          (pev->GUID[4] != LEVEL2_DM_OADDR(row, 4)) || (pev->GUID[5] != LEVEL2_DM_OADDR(row, 5)) ||
@@ -2466,8 +2471,8 @@ vscp_frmw2_feed_level2_dm(vscp_frmw2_firmware_context_t *pctx, const vscp_event_
 
     // Check if index should match and if so if it match (255 is wildcard)
     if (LEVEL2_DM_FLAGS(row) & VSCP_LEVEL2_DM_FLAG_CHECK_INDEX) {
-      if (pev->sizeData > 1 && 255 != pev->pdata[1]) {
-        if (pev->pdata[1] != pctx->index) {
+      if (pev->sizeData > 0 && 255 != pev->pdata[0]) {
+        if (pev->pdata[0] != pctx->index) {
           continue;
         }
       }
