@@ -736,4 +736,27 @@ TEST(_vscp_frmw2, level2_node_reset_sequence_restores_defaults)
   write_level2_registers(cfg, 0xffffffa2, &confirm, 1);
   ASSERT_EQ(1, g_stub.restore_defaults_calls);
   ASSERT_EQ(2, g_stub.send_calls);
+// Level II decision-matrix info
+// ---------------------------------------------------------------------------
+
+TEST(_vscp_frmw2, level2_dm_info_reply_is_class2_protocol)
+{
+  vscp_frmw2_firmware_config_t cfg;
+  init_config(cfg);
+  uint8_t dm[4 * 32] = { 0 };
+  cfg.pDm         = dm;
+  cfg.nDmRows     = 4;
+  cfg.sizeDmRow   = 32;
+  cfg.regOffsetDm = 0x00000100;
+  reset_stub();
+
+  ASSERT_EQ(VSCP_ERROR_SUCCESS, vscp_frmw2_report_dmatrix(&cfg));
+  ASSERT_EQ(1, g_stub.send_calls);
+  ASSERT_EQ(VSCP_CLASS2_PROTOCOL, g_stub.last_sent.vscp_class);
+  ASSERT_EQ(VSCP2_TYPE_PROTOCOL_GET_MATRIX_INFO_RESPONSE, g_stub.last_sent.vscp_type);
+  ASSERT_EQ(22u, g_stub.last_sent.sizeData);
+  ASSERT_EQ(0, std::memcmp(cfg.guid, g_stub.last_sent.pdata, 16));
+  ASSERT_EQ(32, g_stub.last_sent.pdata[16]); // row size
+  ASSERT_EQ(4, g_stub.last_sent.pdata[17]);  // rows
+  ASSERT_EQ(0x01, g_stub.last_sent.pdata[20]);
 }

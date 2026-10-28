@@ -2335,8 +2335,8 @@ vscp_frmw2_report_dmatrix(vscp_frmw2_firmware_context_t *pctx)
       vscp_fwhlp_deleteEvent(&pevrply);
       return rv;
     }
-    pevrply->vscp_class = VSCP_CLASS1_PROTOCOL;
-    pevrply->vscp_type  = VSCP_TYPE_PROTOCOL_GET_MATRIX_INFO_RESPONSE;
+    pevrply->vscp_class = VSCP_CLASS2_PROTOCOL;
+    pevrply->vscp_type  = VSCP2_TYPE_PROTOCOL_GET_MATRIX_INFO_RESPONSE;
 
     pevrply->sizeData = 22;
     vscp_frmw2_memcpy(pevrply->pdata, VSCP_MAX_DATA, pctx->guid, sizeof(pctx->guid)); // GUID
